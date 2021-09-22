@@ -22,6 +22,8 @@ ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 """
+import json
+
 from udemy.compat import (
     re,
     os,
@@ -73,7 +75,7 @@ class Downloader(object):
             self._filename = self._generate_filename()  # pylint: disable=E
         return self._filename
 
-    def _generate_filename():  # pylint: disable=E
+    def _generate_filename(self):  # pylint: disable=E
         pass
 
     def _write_external_links(self, filepath):
@@ -304,11 +306,21 @@ class UdemyCourse(object):
         self._title = None
         self._chapters_count = None
         self._total_lectures = None
+        self._total_quizzes = None
 
         self._chapters = []
 
         if basic:
             self._fetch_course()
+
+        whole_lectures = []
+        if self._chapters:
+            for c in self._chapters:
+                for l in c.get_lectures():
+                    whole_lectures.append(l)
+            for c in self._chapters:
+                for q in c.get_quizzes():
+                    q.update_related_questions_lectures(whole_lectures)
 
     def _fetch_course(self):
         raise NotImplementedError
@@ -336,6 +348,12 @@ class UdemyCourse(object):
         if not self._total_lectures:
             self._fetch_course()
         return self._total_lectures
+
+    @property
+    def quizzes(self):
+        if not self._total_quizzes:
+            self._fetch_course()
+        return self._total_quizzes
 
     def get_chapters(self, chapter_number=None, chapter_start=None, chapter_end=None):
         if not self._chapters:
@@ -367,8 +385,10 @@ class UdemyChapters(object):
         self._chapter_index = None
         self._chapter_title = None
         self._lectures_count = None
+        self._question_count = None
 
         self._lectures = []
+        self._quizzes = []
 
     def __repr__(self):
         chapter = "{title}".format(title=self.title)
@@ -390,6 +410,10 @@ class UdemyChapters(object):
     def lectures(self):
         return self._lectures_count
 
+    @property
+    def quizzes(self):
+        return self._question_count
+
     def get_lectures(self, lecture_number=None, lecture_start=None, lecture_end=None):
         if (
             lecture_number
@@ -409,6 +433,26 @@ class UdemyChapters(object):
             if is_okay:
                 self._lectures = self._lectures[: lecture_end - 1]
         return self._lectures
+
+    def get_quizzes(self, quiz_number=None, quiz_start=None, quiz_end=None):
+        if (
+                quiz_number
+                and not quiz_start
+                and not quiz_end
+                and isinstance(quiz_number, int)
+        ):
+            is_okay = bool(0 < quiz_number <= self.quizzes)
+            if is_okay:
+                self._quizzes = [self._quizzes[quiz_number - 1]]
+        if quiz_start and not quiz_number and isinstance(quiz_start, int):
+            is_okay = bool(0 < quiz_start <= self.lectures)
+            if is_okay:
+                self._quizzes = self._quizzes[quiz_start - 1:]
+        if quiz_end and not quiz_number and isinstance(quiz_end, int):
+            is_okay = bool(0 < quiz_end <= self.lectures)
+            if is_okay:
+                self._quizzes = self._quizzes[: quiz_end - 1]
+        return self._quizzes
 
 
 class UdemyLectures(object):
@@ -755,3 +799,124 @@ class UdemyLectureSubtitles(Downloader):
             except conn_error:
                 self._fsize = 0
         return self._fsize
+
+
+# PLUGIN: QUIZZES
+class UdemyQuizzes(object):
+    def __init__(self):
+        self._quiz_id = None
+        self._quiz_title = None
+        self._question_count = None
+
+        self._quiz_index = None
+
+        self._questions = []
+
+    def __repr__(self):
+        quiz = "{title}".format(title=self.title)
+        return quiz
+
+    @property
+    def id(self):
+        return self._quiz_id
+
+    @property
+    def title(self):
+        return self._quiz_title
+
+    @property
+    def quiz_index(self):
+        return self._quiz_index
+
+    @quiz_index.setter
+    def quiz_index(self, quiz_index):
+        self._quiz_index = quiz_index
+
+    @property
+    def questions(self):
+        if not self._questions:
+            self._process_questions()
+        return self._questions
+
+    def update_related_questions_lectures(self, lectures):
+        self._questions = self.questions
+        for q in self._questions:
+            q.update_related_lectures(lectures)
+
+
+    def _clean(self, text):
+        ok = re.compile(r'[^\\/:*?"<>|]')
+        text = "".join(x if ok.match(x) else "_" for x in text)
+        text = re.sub(r"\.+$", "", text.strip())
+        return text
+
+    def dump(self, filepath):
+        filename = os.path.join(filepath, f"{self._quiz_title}")
+        filename += ".json"
+        # filename = self._clean(filename)
+        if os.path.isfile(filename):
+            retVal = {"status": "True", "msg": "already downloaded"}
+            return retVal
+        questions = [x.mapper() for x in self._questions]
+        content = {
+            "id": self._quiz_id,
+            "title": self._quiz_title,
+            "questions": questions
+        }
+        retVal = to_file(filename, "w", json.dumps(content), None, None)
+        return retVal
+
+
+class UdemyQuizQuestion(object):
+    def __init__(self, parent):
+        self._parent = parent
+
+        self._index = 0
+        self._class = None
+        self._id = None
+        self._assessment_type = None
+        self._feedbacks = []
+        self._answers = []
+        self._correct_response = []
+        self._section = None
+        self._question_plain = None
+        self._related_lectures = []
+
+    @property
+    def id(self):
+        return self._id
+
+    @property
+    def index(self):
+        return self._index
+
+    @property
+    def title(self):
+        return self._question_plain
+
+    @property
+    def related_lectures(self):
+        return self._related_lectures
+
+    def update_related_lectures(self, lectures):
+        self._related_lectures = self._process_related_lectures(lectures)
+
+    def mapper(self):
+        return {
+            "_class": self._class,
+            "id": self._id,
+            "assessment_type": self._assessment_type,
+            "feedbacks": self._feedbacks,
+            "question": self._question_plain,
+            "answers": self._answers,
+            "correct_response": self._correct_response,
+            "section": self._section,
+            "related_lectures": [
+                {
+                    "id": x.id,
+                    "title": x.title,
+                    "index": x.index
+                }
+                for x in self._related_lectures
+            ]
+        }

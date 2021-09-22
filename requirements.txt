@@ -4,5 +4,14 @@ colorama
 requests
 unidecode
 pyOpenSSL
+mpegdash
+sanitize_filename
+tqdm
+python-dotenv
+protobuf
+webvtt-py
+pysrt
+yt-dlp
+bitstring
 cloudscraper
 requests[security]

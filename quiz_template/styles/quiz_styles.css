@@ -1,0 +1,131 @@
+.main {
+  box-shadow: 0px 1px 10px 0px rgba(0, 0, 0, 0.1);
+  padding: 15px;
+  float: left;
+  width: 100%;
+}
+.main * {
+  font-family: monospace !important;
+  text-decoration: none;
+  user-select: none;
+  outline: none;
+}
+
+.main-container {
+  height: 400px;
+  overflow: auto;
+  padding: 10px;
+}
+
+button.submit {
+  background-color: royalblue;
+  border: none;
+  padding: 10px;
+  color: white;
+  border-radius: 8px;
+  font-weight: bold;
+  cursor: pointer;
+  float: right;
+  margin: 20px 20px 0px;
+  width: 100px;
+}
+
+h1 {
+  font-size: 2rem;
+}
+
+.mm,
+.pm {
+  font-size: 0.8rem;
+}
+
+.question {
+  font-size: 20px;
+  font-weight: bold;
+}
+
+label {
+  margin: 10px 0;
+  display: block;
+  cursor: pointer;
+  font-size: 14px;
+  border: solid 1px grey;
+}
+
+label.correct {
+  border: solid 1px green;
+  background-color: #eeffee;
+}
+
+label.wrong {
+  border: solid 1px red;
+  background-color: #ffeeee;
+}
+
+label.correct:hover {
+  border: solid 1px green;
+  background-color: #c3ffc3;
+}
+
+label.wrong:hover {
+  border: solid 1px red;
+  background-color: #ffc3c3;
+}
+
+label:hover {
+  background-color: lightgray;
+}
+
+label.question-revision {
+  padding: 5px;
+}
+
+label.question-revision:hover {
+  font-weight: bold;
+}
+
+.skipped label.question-revision {
+  border: solid 2px transparent;
+  background-color: #eeeeee;
+}
+
+.correct label.question-revision {
+  border: solid 2px transparent;
+  background-color: #eeffee;
+}
+
+.wrong label.question-revision {
+  border: solid 2px transparent;
+  background-color: #ffeeee;
+}
+
+
+.skipped label.question-revision:hover {
+  border: solid 2px grey;
+}
+
+.correct label.question-revision:hover {
+  border: solid 2px green;
+}
+
+.wrong label.question-revision:hover {
+  border: solid 2px red;
+}
+
+.feedback {
+  padding: 10px;
+  margin: 20px 0px;
+  font-size: 18px;
+  border-radius: 10px;
+}
+
+.answers.options label p{
+  display: inline-block;
+  font-size: 18px;
+  line-height: 18px;
+  margin-left: 5px;
+}
+
+.scoreboard {
+  font-size: 18px;
+}

@@ -97,3 +97,7 @@ pip-selfcheck.json
 
 # Rope project settings
 .ropeproject
+
+# IDE
+.vscode
+.idea

@@ -44,7 +44,7 @@ from udemy.compat import (
     MY_COURSES_URL,
     COURSE_SEARCH,
     COLLECTION_URL,
-    SUBSCRIBED_COURSES,
+    SUBSCRIBED_COURSES, QUIZ_URL, LECTURE_URL,
 )
 from udemy.sanitize import slugify, sanitize, SLUG_OK
 from udemy.logger import logger
@@ -153,6 +153,47 @@ class Udemy:
         else:
             results = webpage.get("results", [])
         return results
+
+    # PLUGIN: QUIZZES
+    def _extract_quizzes(self, url, portal_name, quiz_id, last_version):
+        # https://indra.udemy.com/api-2.0/quizzes/4900310/assessments/?version=1&page_size=250&fields[assessment]=id,assessment_type,prompt,correct_response,section,question_plain,related_lectures
+        self._session._headers.update({"Referer": url})
+        url = QUIZ_URL.format(portal_name=portal_name, quiz_id=quiz_id, last_version=last_version)
+        try:
+            resp = self._session._get(url)
+            if resp.status_code in [502, 503]:
+                resp = {}
+            else:
+                resp = resp.json()
+        except conn_error as error:
+            logger.error(msg=f"Udemy Says: Connection error, {error}")
+            time.sleep(0.8)
+            sys.exit(0)
+        except (ValueError, Exception):
+            resp = self._extract_large_course_content(url=url)
+            return resp
+        else:
+            return resp
+
+    def _extract_lectures(self, url, portal_name, course_id, lecture_id):
+        # https://indra.udemy.com/api-2.0/users/me/subscribed-courses/3142166/lectures/20244808/?fields[lecture]=asset,description,download_url,is_free,last_watched_second&fields[asset]=asset_type,length,media_license_token,course_is_drmed,media_sources,captions,thumbnail_sprite,slides,slide_urls,download_urls&q=0.6148300542269443
+        self._session._headers.update({"Referer": url})
+        url = LECTURE_URL.format(portal_name=portal_name, course_id=course_id, lecture_id=lecture_id)
+        try:
+            resp = self._session._get(url)
+            if resp.status_code in [502, 503]:
+                resp = {}
+            else:
+                resp = resp.json()
+        except conn_error as error:
+            logger.error(msg=f"Udemy Says: Connection error, {error}")
+            time.sleep(0.8)
+            sys.exit(0)
+        except (ValueError, Exception):
+            resp = self._extract_large_course_content(url=url)
+            return resp
+        else:
+            return resp
 
     def _my_courses(self, portal_name):
         results = []
@@ -656,15 +697,18 @@ class Udemy:
         counter = -1
 
         if course:
-            lecture_counter = 0
+            quizzes = []
+            content_counter = 0
+            quiz_counter = 1
             for entry in course:
                 clazz = entry.get("_class")
                 asset = entry.get("asset")
                 supp_assets = entry.get("supplementary_assets")
 
                 if clazz == "chapter":
-                    lecture_counter = 0
+                    # content_counter = 0
                     lectures = []
+                    quizzes = []
                     chapter_index = entry.get("object_index")
                     chapter_title = "{0:02d} ".format(chapter_index) + self._clean(
                         entry.get("title")
@@ -676,14 +720,16 @@ class Udemy:
                                 "chapter_id": entry.get("id"),
                                 "chapter_index": chapter_index,
                                 "lectures": [],
+                                "quizzes": [],
                             }
                         )
                         counter += 1
                 elif clazz == "lecture":
-                    lecture_counter += 1
+                    content_counter += 1
                     lecture_id = entry.get("id")
                     if len(_udemy["chapters"]) == 0:
                         lectures = []
+                        quizzes = []
                         chapter_index = entry.get("object_index")
                         chapter_title = "{0:02d} ".format(chapter_index) + self._clean(
                             entry.get("title")
@@ -695,6 +741,7 @@ class Udemy:
                                     "chapter_id": lecture_id,
                                     "chapter_index": chapter_index,
                                     "lectures": [],
+                                    "quizzes": [],
                                 }
                             )
                             counter += 1
@@ -736,7 +783,7 @@ class Udemy:
                         logger.progress(msg="Downloading course information .. ")
                         lecture_index = entry.get("object_index")
                         lecture_title = "{0:03d} ".format(
-                            lecture_counter
+                            content_counter
                         ) + self._clean(entry.get("title"))
                         data = asset.get("stream_urls")
                         if data and isinstance(data, dict):
@@ -751,7 +798,7 @@ class Udemy:
                             subtitle_count = len(subtitles)
                             lectures.append(
                                 {
-                                    "index": lecture_counter,
+                                    "index": content_counter,
                                     "lecture_index": lecture_index,
                                     "lectures_id": lecture_id,
                                     "lecture_title": lecture_title,
@@ -764,10 +811,28 @@ class Udemy:
                                     "sources_count": sources_count,
                                 }
                             )
+                        elif data is None and asset_type == "video":
+                            data_lecture = self._extract_lectures(url, portal_name, course_id, lecture_id)
+                            # TODO: CUANDO SE TENGAN LAS CLAVES DE CHROME PARA AVERIGUAR CUAL ES EL ID DE
+                            #  DESENCRIPTADO DEL VIDEO
+                            lectures.append(
+                                {
+                                    "index": content_counter,
+                                    "lecture_index": lecture_index,
+                                    "lectures_id": lecture_id,
+                                    "lecture_title": lecture_title,
+                                    "html_content": asset.get("body"),
+                                    "extension": "html",
+                                    "assets": retVal,
+                                    "assets_count": len(retVal),
+                                    "subtitle_count": 0,
+                                    "sources_count": 0,
+                                }
+                            )
                         else:
                             lectures.append(
                                 {
-                                    "index": lecture_counter,
+                                    "index": content_counter,
                                     "lecture_index": lecture_index,
                                     "lectures_id": lecture_id,
                                     "lecture_title": lecture_title,
@@ -783,30 +848,60 @@ class Udemy:
                     _udemy["chapters"][counter]["lectures"] = lectures
                     _udemy["chapters"][counter]["lectures_count"] = len(lectures)
                 elif clazz == "quiz":
-                    lecture_id = entry.get("id")
+                    quiz_counter += 1
+                    content_counter += 1
+                    quiz_id = entry.get("id")
                     if len(_udemy["chapters"]) == 0:
                         lectures = []
+                        quizzes = []
                         chapter_index = entry.get("object_index")
                         chapter_title = "{0:02d} ".format(chapter_index) + self._clean(
                             entry.get("title")
                         )
                         if chapter_title not in _udemy["chapters"]:
-                            lecture_counter = 0
+                            # content_counter = 0
                             _udemy["chapters"].append(
                                 {
                                     "chapter_title": chapter_title,
-                                    "chapter_id": lecture_id,
+                                    "chapter_id": quiz_id,
                                     "chapter_index": chapter_index,
                                     "lectures": [],
+                                    "quizzes": [],
                                 }
                             )
                             counter += 1
-                    _udemy["chapters"][counter]["lectures"] = lectures
-                    _udemy["chapters"][counter]["lectures_count"] = len(lectures)
+
+                    if quiz_id:
+                        # AQUI HAY QUE DESCARGAR EL JSON DE LOS QUIZZES
+                        last_version_quiz = entry.get("version", 1)
+
+                        lecture_title = "{0:03d} ".format(content_counter) + f"Quiz {quiz_counter} " + self._clean(entry.get("title"))
+
+                        quiz_res = self._extract_quizzes(url, portal_name, quiz_id, last_version_quiz)
+                        quizzes.append(
+                            {
+                                "index": content_counter,
+                                "quiz_id": quiz_id,
+                                "quiz_title": lecture_title,
+                                "quizzes_count": quiz_res['count'],
+                                "questions": quiz_res['results'],
+                            }
+                        )
+                    _udemy["chapters"][counter]["quizzes"] = quizzes
+                    _udemy["chapters"][counter]["quizzes_count"] = len(quizzes)
+                    # _udemy["chapters"][counter]["lectures"] = lectures
+                    # _udemy["chapters"][counter]["lectures_count"] = len(lectures)
             _udemy["total_chapters"] = len(_udemy["chapters"])
             _udemy["total_lectures"] = sum(
                 [
                     entry.get("lectures_count", 0)
+                    for entry in _udemy["chapters"]
+                    if entry
+                ]
+            )
+            _udemy["total_quizzes"] = sum(
+                [
+                    entry.get("quizzes_count", 0)
                     for entry in _udemy["chapters"]
                     if entry
                 ]

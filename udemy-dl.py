@@ -44,7 +44,7 @@ from udemy.utils import (
 
 
 class Udemy(WebVtt2Srt, ProgressBar):
-    """Udemy is class which implements downloading/lising and all"""
+    """Udemy is class which implements downloading/listing and all"""
 
     def __init__(
         self, url_or_courses, username="", password="", cookies="", cache_session=False
@@ -146,6 +146,9 @@ class Udemy(WebVtt2Srt, ProgressBar):
         lecture_number=None,
         lecture_start=None,
         lecture_end=None,
+        quiz_number=None,
+        quiz_start=None,
+        quiz_end=None,
         skip_hls_stream=False,
     ):
         """This function will listdown the course contents .."""
@@ -169,10 +172,12 @@ class Udemy(WebVtt2Srt, ProgressBar):
                 chapter_end=chapter_end,
             )
             total_lectures = course.lectures
+            total_quizzes = course.quizzes
             total_chapters = course.chapters
             logger.success(msg=course_name, course=True)
             logger.info(msg=f"Chapter(s) ({total_chapters})", new_line=True)
             logger.info(msg=f"Lecture(s) ({total_lectures})", new_line=True)
+            logger.info(msg=f"Quizzes(s) ({total_quizzes})", new_line=True)
             for chapter in chapters:
                 chapter_id = chapter.id
                 chapter_title = chapter.title
@@ -182,6 +187,13 @@ class Udemy(WebVtt2Srt, ProgressBar):
                     lecture_end=lecture_end,
                 )
                 lectures_count = chapter.lectures
+                quizzes = chapter.get_quizzes(
+                    quiz_number=quiz_number,
+                    quiz_start=quiz_start,
+                    quiz_end=quiz_end,
+                )
+                quizzes_count = chapter.quizzes
+
                 logger.info(
                     msg=f"Chapter ({chapter_title}-{chapter_id})",
                     new_line=True,
@@ -271,6 +283,17 @@ class Udemy(WebVtt2Srt, ProgressBar):
                                 new_line=True,
                                 cc=15,
                             )
+
+                for quiz in quizzes:
+                    logger.info(
+                        indent="     - ",
+                        msg="Quiz id : ",
+                        new_line=True,
+                        cc=80,
+                        cc_msg=10,
+                        post_msg=f"{quiz.id}.",
+                        cc_pmsg=80,
+                    )
             print("")
 
     def course_download(
@@ -281,12 +304,16 @@ class Udemy(WebVtt2Srt, ProgressBar):
         dl_assets=True,
         dl_lecture=True,
         dl_subtitles=True,
+        dl_quizzes=True,
         chapter_number=None,
         chapter_start=None,
         chapter_end=None,
         lecture_number=None,
         lecture_start=None,
         lecture_end=None,
+        quiz_number=None,
+        quiz_start=None,
+        quiz_end=None,
         keep_vtt=False,
         skip_hls_stream=False,
     ):
@@ -315,10 +342,12 @@ class Udemy(WebVtt2Srt, ProgressBar):
                 chapter_end=chapter_end,
             )
             total_lectures = course.lectures
+            total_quizzes = course.quizzes
             total_chapters = course.chapters
             logger.success(msg=course_name, course=True)
             logger.info(msg=f"Chapter(s) ({total_chapters})", new_line=True)
             logger.info(msg=f"Lecture(s) ({total_lectures})", new_line=True)
+            logger.info(msg=f"Quiz(zes) ({total_quizzes})", new_line=True)
             for chapter in chapters:
                 chapter_index = chapter.index
                 chapter_title = chapter.title
@@ -328,6 +357,13 @@ class Udemy(WebVtt2Srt, ProgressBar):
                     lecture_end=lecture_end,
                 )
                 lectures_count = chapter.lectures
+                quizzes = chapter.get_quizzes(
+                    quiz_number=quiz_number,
+                    quiz_start=quiz_start,
+                    quiz_end=quiz_end,
+                )
+                quizzes_count = chapter.quizzes
+
                 filepath = to_filepath(course_path, chapter_title)
                 logger.set_log_filepath(course_path)
                 chapter_progress = (
@@ -349,6 +385,11 @@ class Udemy(WebVtt2Srt, ProgressBar):
                     msg=f"Found ({lectures_count}) lecture(s).",
                     new_line=True,
                 )
+                logger.info(
+                    msg=f"Found ({quizzes_count}) quiz(zes).",
+                    new_line=True,
+                )
+
                 lecture_index = 0
                 if lecture_number:
                     lecture_index = lecture_number - 1
@@ -384,6 +425,31 @@ class Udemy(WebVtt2Srt, ProgressBar):
                             language=language,
                             keep_vtt=keep_vtt,
                         )
+
+                quiz_index = 0
+                if quiz_number:
+                    quiz_index = quiz_number - 1
+                if quiz_start:
+                    quiz_index = quiz_start - 1
+                if quiz_index < 0:
+                    quiz_index = 0
+                for quiz in quizzes:
+                    # quiz_assets = quiz.assets
+                    # quiz_subtitles = quiz.subtitles
+                    # quiz_best = quiz.getbest()
+                    if dl_quizzes:
+                        quiz_index = quiz_index + 1
+                        quiz.quiz_index = quiz_index
+                        retval = quiz.dump(filepath=filepath)
+                        msg = retval.get("msg")
+                        if msg not in ["download", "already downloaded"]:
+                            msg = f"'{quiz.title}.json' failed to dump, reason: {msg}"
+                            logger.warning(msg=msg, silent=True)
+
+                        logger.info(msg=f"Saving ({quiz.title})", new_line=True)
+
+                        # TODO Agregar el JSON al Quiz Template
+
             print("")
 
 
@@ -467,6 +533,14 @@ def main():
         metavar="",
     )
     advance.add_argument(
+        "-q",
+        "--quiz",
+        dest="quiz",
+        type=int,
+        help="Download specific quiz from chapter(s).",
+        metavar="",
+    )
+    advance.add_argument(
         "-s",
         "--sub-lang",
         dest="language",
@@ -503,6 +577,20 @@ def main():
         help="Download till specific position within chapter(s).",
         metavar="",
     )
+    advance.add_argument(
+        "--quiz-start",
+        dest="quiz_start",
+        type=int,
+        help="Download from specific position within chapter(s).",
+        metavar="",
+    )
+    advance.add_argument(
+        "--quiz-end",
+        dest="quiz_end",
+        type=int,
+        help="Download till specific position within chapter(s).",
+        metavar="",
+    )
 
     other = parser.add_argument_group("Others")
     other.add_argument(
@@ -535,6 +623,13 @@ def main():
         action="store_true",
         help="Download course but skip captions/subtitle.",
     )
+    other.add_argument(
+        "--skip-quizzes",
+        dest="skip_quizzes",
+        action="store_true",
+        help="Download course but skip quiz(zes).",
+    )
+
     other.add_argument(
         "--skip-hls",
         dest="skip_hls_stream",
@@ -608,19 +703,23 @@ def main():
             output=args.output,
             language=args.language,
         )
-    dl_assets = dl_lecture = dl_subtitles = True
+    dl_assets = dl_lecture = dl_subtitles = dl_quizzes = True
     if args.assets_only:
         dl_lecture = False
         dl_subtitles = False
+        dl_quizzes = False
         args.skip_hls_stream = True
     if args.skip_assets:
         dl_assets = False
     if args.caption_only:
         dl_lecture = False
         dl_assets = False
+        dl_quizzes = False
         args.skip_hls_stream = True
     if args.skip_captions:
         dl_subtitles = False
+    if args.skip_quizzes:
+        dl_quizzes = False
     if not args.info:
         if args.quality and args.quality > 720 and args.skip_hls_stream:
             args.quality = ""
@@ -634,12 +733,16 @@ def main():
             dl_assets=dl_assets,
             dl_lecture=dl_lecture,
             dl_subtitles=dl_subtitles,
+            dl_quizzes=dl_quizzes,
             chapter_number=args.chapter,
             chapter_start=args.chapter_start,
             chapter_end=args.chapter_end,
             lecture_number=args.lecture,
             lecture_start=args.lecture_start,
             lecture_end=args.lecture_end,
+            quiz_number=args.quiz,
+            quiz_start=args.quiz_start,
+            quiz_end=args.quiz_end,
             keep_vtt=args.keep_vtt,
             skip_hls_stream=args.skip_hls_stream,
         )
@@ -651,6 +754,9 @@ def main():
             lecture_number=args.lecture,
             lecture_start=args.lecture_start,
             lecture_end=args.lecture_end,
+            quiz_number=args.quiz,
+            quiz_start=args.quiz_start,
+            quiz_end=args.quiz_end,
             skip_hls_stream=args.skip_hls_stream,
         )
 

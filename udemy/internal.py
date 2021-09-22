@@ -23,6 +23,8 @@ ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 """
+from typing import List
+
 from udemy.compat import time, sys
 from udemy.logger import logger
 from udemy.extract import Udemy
@@ -33,7 +35,7 @@ from udemy.shared import (
     UdemyLectures,
     UdemyLectureStream,
     UdemyLectureAssets,
-    UdemyLectureSubtitles,
+    UdemyLectureSubtitles, UdemyQuizzes, UdemyQuizQuestion,
 )
 
 
@@ -89,6 +91,7 @@ class InternUdemyCourse(UdemyCourse, Udemy):
             self._title = self._info["course_title"]
             self._chapters_count = self._info["total_chapters"]
             self._total_lectures = self._info["total_lectures"]
+            self._total_quizzes = self._info["total_quizzes"]
             self._chapters = [
                 InternUdemyChapter(z, access_token=access_token)
                 for z in self._info["chapters"]
@@ -117,12 +120,22 @@ class InternUdemyChapter(UdemyChapters):
         self._chapter_title = chapter["chapter_title"]
         self._chapter_index = chapter["chapter_index"]
         self._lectures_count = chapter.get("lectures_count", 0)
+        self._question_count = chapter.get("quizzes_count", 0)
         self._lectures = (
             [
                 InternUdemyLecture(z, access_token=access_token)
                 for z in chapter["lectures"]
             ]
             if self._lectures_count > 0
+            else []
+        )
+
+        self._quizzes = (
+            [
+                InternUdemyQuiz(z, access_token=access_token)
+                for z in chapter["quizzes"]
+            ]
+            if self._question_count > 0
             else []
         )
 
@@ -220,3 +233,59 @@ class InternUdemyLectureSubtitles(UdemyLectureSubtitles):
         self._extension = subtitles.get("extension")
         self._language = subtitles.get("language")
         self._url = subtitles.get("download_url")
+
+
+class InternUdemyQuiz(UdemyQuizzes):
+    def __init__(self, quizzes, access_token=None):
+        super(InternUdemyQuiz, self).__init__()
+        self._access_token = access_token
+        self._info = quizzes
+
+        self._quiz_id = self._info["quiz_id"]
+        self._quiz_title = self._info["quiz_title"]
+        self._question_count = self._info.get("quizzes_count", 0)
+
+    def _process_questions(self):
+        questions = (
+            [InternUdemyQuizQuestion(self._info["questions"][i], i, self) for i in range(len(self._info["questions"]))]
+            if self._question_count > 0
+            else []
+        )
+        self._questions = questions
+
+
+class InternUdemyQuizQuestion(UdemyQuizQuestion):
+    LETTERS = ["a", "b", "c", "d", "e", "f", "g"]
+
+    def __init__(self, question, index, parent):
+        super(InternUdemyQuizQuestion, self).__init__(parent)
+        self._index = index
+        self._question = question
+
+        self._class = question.get("_class")
+        self._id = question.get("id")
+        self._assessment_type = question.get("assessment_type")
+        prompt = question.get("prompt")
+        self._feedbacks = {self.LETTERS[i]: prompt.get("feedbacks", [])[i] for i in range(len(prompt.get("feedbacks", [])))}
+        self._answers = {self.LETTERS[i]: prompt.get("answers", [])[i] for i in range(len(prompt.get("answers", [])))}
+
+        self._correct_response = question.get("correct_response")
+        self._section = question.get("section")
+        self._question_plain = question.get("question_plain")
+
+    def _process_related_lectures(self, lectures: List[UdemyLectures]):
+        rel_lectures = []
+        pending_lectures = self._question.get("related_lectures", [])
+        for lec in lectures:
+            if pending_lectures:
+                _rel = pending_lectures[0]
+                found = False
+                for _rel in pending_lectures:
+                    if _rel['id'] == lec.id:
+                        rel_lectures.append(lec)
+                        found = True
+                        break
+                if found:
+                    pending_lectures.remove(_rel)
+        self._related_lectures = rel_lectures
+        return self._related_lectures

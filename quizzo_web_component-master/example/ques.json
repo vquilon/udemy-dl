@@ -1,0 +1,20 @@
+[
+    {
+        "que": "Which among the following is not an operating system ?",
+        "opt": [
+            "Fedora",
+            "MacOS",
+            "Windows",
+            "Android"
+        ],
+        "ans": 3
+    },
+    {
+        "que": "Is Windows good",
+        "opt": [
+            "Yes",
+            "No"
+        ],
+        "ans": 2
+    }
+]
