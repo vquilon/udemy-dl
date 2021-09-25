@@ -99,5 +99,5 @@ pip-selfcheck.json
 .ropeproject
 
 # IDE
-.vscode
-.idea
+.vscode/
+.idea/
