@@ -103,3 +103,4 @@ pip-selfcheck.json
 .idea/
 /.idea/
 /.github/
+/keyfile.json
