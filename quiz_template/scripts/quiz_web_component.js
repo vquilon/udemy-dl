@@ -1,3 +1,4 @@
+const WRONG_QUIZ = "wrong_quiz";
 const QUIZ = "quiz";
 const RESULTS = "results";
 const REVISION = "revision";
@@ -29,6 +30,18 @@ const template_styles = document.createElement("template");
 template_styles.innerHTML = `
 <link href="styles/quiz_styles.css" rel="stylesheet" type="text/css">
 `
+
+const template_wrong_quiz = document.createElement("template");
+template_wrong_quiz.innerHTML = `
+<div class="${WRONG_QUIZ} main hide">
+  <div class="meta">
+      <h1 class="name"></h1>
+  </div>
+  <div class="main-container">
+    <p class="wrong-reason"></p>
+  </div>
+</div>
+`;
 
 const template_quiz = document.createElement("template");
 template_quiz.innerHTML = `
@@ -79,7 +92,7 @@ template_revision.innerHTML = `
 `;
 
 
-class QuizWebComp extends HTMLElement {
+class JSONQuiz extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
@@ -192,50 +205,63 @@ class QuizWebComp extends HTMLElement {
     this.createQuestion($quiz, data_questions[this.actual_question]);
 
     // Button Listeners
-    $quiz.querySelector("button.verify").addEventListener("click", (e) => {
-      let $_quiz = this.shadowRoot.querySelector(`#quiz-${this.data_quiz.id}.quiz.main`);
-      let data_question = data_questions[this.actual_question];
-      let ques_id = data_questions[this.actual_question].id;
+    const verifyAnswer = (e) => {
+        let $_quiz = this.shadowRoot.querySelector(`#quiz-${this.data_quiz.id}.quiz.main`);
+        let data_question = data_questions[this.actual_question];
+        let ques_id = data_questions[this.actual_question].id;
 
-      // Posibilidad de multiples opciones
-      const answer_elements = Array.from($_quiz.querySelectorAll("input[name=answer]:checked")).map((elem) => elem.value);
-      if ( answer_elements.length !== 0 && !this.isAnswered(ques_id)) {
-        let feedbacks = answer_elements.map((elem) => {
-          return {
-            "text": data_question.feedbacks[elem],
-            "type": data_question.correct_response.includes(elem) ? "correct":"wrong"
-          }
-        });
-        let are_correct = answer_elements.every(
-          ans_val => data_question.correct_response.includes(ans_val)
-        );
-        if ( are_correct ) {
-          this.answered_count.correct++;
-          this.answered.correct[ques_id] = {
-              "options": answer_elements,
-              "question_number": this.actual_question,
-              "question": data_question
+        // Posibilidad de multiples opciones
+        const answer_elements = Array.from($_quiz.querySelectorAll("input[name=answer]:checked")).map((elem) => elem.value);
+        if ( answer_elements.length !== 0 ) {
+              let feedbacks = answer_elements.map((elem) => {
+                return {
+                  "text": data_question.feedbacks[elem],
+                  "type": data_question.correct_response.includes(elem) ? "correct":"wrong"
+                }
+              });
+              let are_correct = answer_elements.every(
+                ans_val => data_question.correct_response.includes(ans_val)
+              );
+              if ( are_correct ) {
+                if ( !this.isAnswered(ques_id) ) {
+                  this.answered_count.correct++;
+                  this.answered.correct[ques_id] = {
+                    "options": answer_elements,
+                    "question_number": this.actual_question,
+                    "question": data_question
+                  }
+                }
+
+                this.createFeedback(feedbacks);
+              }
+              else {
+                if ( !this.isAnswered(ques_id) ) {
+                  this.answered_count.wrong++;
+                  this.answered.wrong[ques_id] = {
+                    "options": answer_elements,
+                    "question_number": this.actual_question,
+                    "question": data_questions[this.actual_question]
+                  }
+                }
+
+                this.createFeedback(feedbacks);
+              }
+
+
+              // Bloqueamos la pregunta
+              // $_quiz.querySelectorAll(
+              //   `.answers input:not(:checked)`
+              // ).forEach((elem) => elem.disabled=true);
+              $_quiz.querySelectorAll(
+                `.answers input:checked`
+              ).forEach((elem) => elem.disabled=true);
             }
-          this.createFeedback(feedbacks);
-        }
-        else {
-          this.answered_count.wrong++;
-          this.answered.wrong[ques_id] = {
-              "options": answer_elements,
-              "question_number": this.actual_question,
-              "question": data_questions[this.actual_question]
-            }
-          this.createFeedback(feedbacks);
-        }
 
-        // Bloqueamos la pregunta
-        $_quiz.querySelectorAll(
-          `.answers input:not(:checked)`
-        ).forEach((elem) => elem.disabled=true);
-      }
-
-    });
+    }
+    $quiz.querySelector("button.verify").addEventListener("click", verifyAnswer);
     $quiz.querySelector("button.skip").addEventListener("click", (e) => {
+      let $_quiz = this.shadowRoot.querySelector(`#quiz-${this.data_quiz.id}.quiz.main`);
+      verifyAnswer(e);
       let ques_id = data_questions[this.actual_question].id
       if (!this.isAnswered(ques_id)) {
         this.answered_count.skipped++;
@@ -263,6 +289,18 @@ class QuizWebComp extends HTMLElement {
       this.addNode($quiz);
     }
   }
+
+  createWrongQuiz() {
+      // Generating html for answers
+      var $wrong_quiz = template_wrong_quiz.content.cloneNode(true);
+
+      $wrong_quiz.id = `quiz-${this.data_quiz.id}`;
+      $wrong_quiz.querySelector(".meta .name").innerText = this.data_quiz.title;
+
+      $wrong_quiz.querySelector(".wrong-reason").innerText = this.data_quiz.wrong_reason || "Unknown";
+
+      this.addNode($wrong_quiz);
+    }
 
   createQuestion($parentNode, data_question) {
     // Se quita el feedback
@@ -315,7 +353,7 @@ class QuizWebComp extends HTMLElement {
     var $revision = template_revision.content.cloneNode(true);
     $revision.id = `quiz-${this.data_quiz.id}`;
     // Se agrega el feedback
-
+    let orig_answer_options = answer_options;
     let ans_skipped = false;
     if ( answer_options.length === 0 ) {
       ans_skipped = true;
@@ -335,9 +373,12 @@ class QuizWebComp extends HTMLElement {
 
     const answers_html = this.createAnswers(data_question, true);
     $revision.querySelector(".options").innerHTML = answers_html;
-    answer_options.forEach((ans_elem) => {
-      $revision.querySelector(`.options input[value=${ans_elem}]`).checked = true;
-    });
+    if ( !ans_skipped ) {
+      orig_answer_options.forEach((ans_elem) => {
+        $revision.querySelector(`.options input[value=${ans_elem}]`).checked = true;
+      });
+    }
+
     $revision.querySelectorAll(
       `.answers input:not(:checked)`
     ).forEach((elem) => elem.disabled=true);
@@ -354,11 +395,17 @@ class QuizWebComp extends HTMLElement {
       .then((res) => res.json())
       .then((data_quiz) => {
         this.data_quiz = data_quiz;
-        this.createQuiz();
+        if ( this.data_quiz.validated !== undefined ) {
+          this.createQuiz();
+        }
+        else {
+          this.createWrongQuiz();
+        }
+
     });
   }
   disconnectedCallback() {
     this.shadowRoot.querySelector("button").removeEventListener();
   }
 }
-window.customElements.define("quiz-web-comp", QuizWebComp);
+window.customElements.define("json-quiz", JSONQuiz);

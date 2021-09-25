@@ -23,6 +23,7 @@ THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 """
 import json
+import subprocess
 
 from udemy.compat import (
     re,
@@ -33,7 +34,9 @@ from udemy.compat import (
     conn_error,
     HEADERS,
 )
+from udemy.decryptor.utils import extract_kid, mux_process, decrypt
 from udemy.ffmpeg import FFMPeg
+from udemy.logger import logger
 from udemy.utils import to_file, prepare_html
 
 
@@ -253,6 +256,93 @@ class Downloader(object):
         return retVal
 
 
+class EncryptDownloader(object):
+    def __init__(self):
+        self._url = None
+        self._filename = None
+        self._mediatype = None
+        self._extension = None
+        self._active = True
+        self._is_hls = False
+        self._token = None
+        self._sess = requests.session()
+
+    @property
+    def url(self):
+        """abac"""
+        return self._url
+
+    @property
+    def token(self):
+        return self._token
+
+    @property
+    def is_hls(self):
+        return self._is_hls
+
+    @property
+    def mediatype(self):
+        return self._mediatype
+
+    @property
+    def extension(self):
+        return self._extension
+
+    @property
+    def filename(self):
+        if not self._filename:
+            self._filename = self._generate_filename()  # pylint: disable=E
+        return self._filename
+
+    def _generate_filename(self):  # pylint: disable=E
+        pass
+
+    def handle_segments(self,  keep_encrypted, do_decrypt, keys_decryptors, url, format_id, video_title, output_path, concurrent_connections=10):
+        lecture_file_path = os.path.join(output_path, self.filename)
+
+        file_name = lecture_file_path.replace("%", "").replace(".mp4", "")
+        video_filepath_enc = file_name + ".encrypted.mp4"
+        audio_filepath_enc = file_name + ".encrypted.m4a"
+        video_filepath_dec = file_name + ".decrypted.mp4"
+        audio_filepath_dec = file_name + ".decrypted.m4a"
+        logger.info(msg="> Downloading Lecture Tracks...", new_line=True)
+        ret_code = subprocess.Popen([
+            "yt-dlp", "--force-generic-extractor", "--allow-unplayable-formats",
+            "--concurrent-fragments", f"{concurrent_connections}", "--downloader",
+            "aria2c", "--fixup", "never", "-k", "-o", f"{file_name}.encrypted.%(ext)s",
+            "-f", format_id, f"{url}"
+        ]).wait()
+        logger.info(msg="> Lecture Tracks Downloaded", new_line=True)
+
+        logger.info(msg="Return code: " + str(ret_code))
+        if ret_code != 0:
+            logger.error(msg="Return code from the downloader was non-0 (error), skipping!", new_line=True)
+            return
+
+        video_kid = extract_kid(video_filepath_enc)
+        logger.info(msg="KID for video file is: " + video_kid, new_line=True)
+
+        audio_kid = extract_kid(audio_filepath_enc)
+        logger.info(msg="KID for audio file is: " + audio_kid, new_line=True)
+
+        try:
+            if do_decrypt and keys_decryptors:
+                decrypt(keys_decryptors, video_kid, video_filepath_enc, video_filepath_dec)
+                decrypt(keys_decryptors, audio_kid, audio_filepath_enc, audio_filepath_dec)
+                mux_process(video_title, video_filepath_dec, audio_filepath_dec, lecture_file_path)
+            # else:
+            #     self.mux_process(file_name+"video_audio_encrypted.mp4", video_filepath_enc, audio_filepath_enc, output_path)
+            if not keep_encrypted and os.path.isfile(lecture_file_path):
+                os.remove(video_filepath_enc)
+                os.remove(audio_filepath_enc)
+
+            if do_decrypt and keys_decryptors:
+                os.remove(video_filepath_dec)
+                os.remove(audio_filepath_dec)
+        except Exception as e:
+            print(f"Error: ", e)
+
+
 class UdemyCourses(object):
     def __init__(self, username="", password="", cookies="", basic=True):
 
@@ -291,6 +381,7 @@ class UdemyCourse(object):
         skip_hls_stream=False,
         cache_session=False,
         callback=None,
+        chapter_start=0
     ):
 
         self._url = url
@@ -309,6 +400,8 @@ class UdemyCourse(object):
         self._total_quizzes = None
 
         self._chapters = []
+
+        self._chapter_start = chapter_start
 
         if basic:
             self._fetch_course()
@@ -469,9 +562,14 @@ class UdemyLectures(object):
         self._subtitles_count = None
         self._html_content = None
 
+        self._is_encrypted = None
+        self._asset_id = None
+
         self._assets = []
         self._streams = []
         self._subtitles = []
+
+        self._encrypt_streams = []
 
     def __repr__(self):
         lecture = "{title}".format(title=self.title)
@@ -480,6 +578,16 @@ class UdemyLectures(object):
     @property
     def id(self):
         return self._lecture_id
+
+    @property
+    def encrypt_streams(self):
+        if not self._encrypt_streams:
+            self._process_encrypted_sources()  # pylint: disable=E
+        return self._encrypt_streams
+
+    @property
+    def is_encrypted(self):
+        return self._is_encrypted
 
     @property
     def index(self):
@@ -520,7 +628,7 @@ class UdemyLectures(object):
         return self._subtitles
 
     def _getbest(self):
-        streams = self.streams
+        streams = self.streams or self.encrypt_streams
         if not streams:
             return None
 
@@ -530,11 +638,35 @@ class UdemyLectures(object):
             st = (keyftype, keyres)
             return st
 
-        self._best = max([i for i in streams if not i.is_hls], key=_sortkey)
+        if len(self.encrypt_streams) > 0:
+            self._best = streams[-1] # last index is the best quality
+            self._best = max([i for i in streams if not i.is_hls], key=_sortkey)
+        else:
+            return None
+
         return self._best
 
     def getbest(self):
         return self._getbest()
+
+    def get_quality(self, quality, preferred_mediatype="video"):
+        lecture = self.getbest()
+        _temp = {}
+        streams = self.streams or self.encrypt_streams or []
+
+        if self.encrypt_streams:
+            lecture = min(self.encrypt_streams, key=lambda x: abs(int(x.height) - quality))
+
+        for s in streams:
+            if isinstance(quality, int) and s.quality == quality:
+                mediatype = s.mediatype
+                _temp[mediatype] = s
+        if _temp:
+            if preferred_mediatype in _temp:
+                lecture = _temp[preferred_mediatype]
+            else:
+                lecture = list(_temp.values()).pop()
+        return lecture
 
     def dump(self, filepath):
         retVal = {}
@@ -549,9 +681,8 @@ class UdemyLectures(object):
         return retVal
 
 
-class UdemyLectureStream(Downloader):
+class UdemyLectureEncryptStreams(EncryptDownloader):
     def __init__(self, parent):
-
         self._mediatype = None
         self._quality = None
         self._resolution = None
@@ -566,17 +697,23 @@ class UdemyLectureStream(Downloader):
         self._is_hls = False
         self._token = None
 
-        Downloader.__init__(self)
+        self._format_id = None
 
-    def __repr__(self):
-        out = "%s:%s@%s" % (self.mediatype, self.extension, self.quality)
-        return out
+        EncryptDownloader.__init__(self)
 
     def _generate_filename(self):
         ok = re.compile(r'[^\\/:*?"<>|]')
         filename = "".join(x if ok.match(x) else "_" for x in self.title)
         filename += "." + self.extension
         return filename
+
+    @property
+    def parent(self):
+        return self._parent
+
+    @property
+    def format_id(self):
+        return self._format_id
 
     @property
     def resolution(self):
@@ -624,19 +761,85 @@ class UdemyLectureStream(Downloader):
     def mediatype(self):
         return self._mediatype
 
-    def get_quality(self, quality, preferred_mediatype="video"):
-        lecture = self._parent.getbest()
-        _temp = {}
-        for s in self._parent.streams:
-            if isinstance(quality, int) and s.quality == quality:
-                mediatype = s.mediatype
-                _temp[mediatype] = s
-        if _temp:
-            if preferred_mediatype in _temp:
-                lecture = _temp[preferred_mediatype]
-            else:
-                lecture = list(_temp.values()).pop()
-        return lecture
+
+class UdemyLectureStream(Downloader):
+    def __init__(self, parent):
+
+        self._mediatype = None
+        self._quality = None
+        self._resolution = None
+        self._dimension = None
+        self._extension = None
+        self._url = None
+
+        self._parent = parent
+        self._filename = None
+        self._fsize = None
+        self._active = False
+        self._is_hls = False
+        self._token = None
+
+        Downloader.__init__(self)
+
+    def __repr__(self):
+        out = "%s:%s@%s" % (self.mediatype, self.extension, self.quality)
+        return out
+
+    def _generate_filename(self):
+        ok = re.compile(r'[^\\/:*?"<>|]')
+        filename = "".join(x if ok.match(x) else "_" for x in self.title)
+        filename += "." + self.extension
+        return filename
+
+    @property
+    def parent(self):
+        return self._parent
+
+    @property
+    def resolution(self):
+        return self._resolution
+
+    @property
+    def quality(self):
+        return self._quality
+
+    @property
+    def url(self):
+        return self._url
+
+    @property
+    def is_hls(self):
+        return self._is_hls
+
+    @property
+    def token(self):
+        return self._token
+
+    @property
+    def id(self):
+        return self._parent.id
+
+    @property
+    def dimension(self):
+        return self._dimension
+
+    @property
+    def extension(self):
+        return self._extension
+
+    @property
+    def filename(self):
+        if not self._filename:
+            self._filename = self._generate_filename()
+        return self._filename
+
+    @property
+    def title(self):
+        return self._parent.title
+
+    @property
+    def mediatype(self):
+        return self._mediatype
 
     def get_filesize(self):
         if not self._fsize:

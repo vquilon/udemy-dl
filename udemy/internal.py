@@ -26,8 +26,8 @@ THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 from typing import List
 
 from udemy.compat import time, sys
-from udemy.logger import logger
 from udemy.extract import Udemy
+from udemy.logger import logger
 from udemy.shared import (
     UdemyCourse,
     UdemyCourses,
@@ -35,7 +35,7 @@ from udemy.shared import (
     UdemyLectures,
     UdemyLectureStream,
     UdemyLectureAssets,
-    UdemyLectureSubtitles, UdemyQuizzes, UdemyQuizQuestion,
+    UdemyLectureSubtitles, UdemyQuizzes, UdemyQuizQuestion, UdemyLectureEncryptStreams,
 )
 
 
@@ -82,7 +82,7 @@ class InternUdemyCourse(UdemyCourse, Udemy):
             logger.info(msg="Logged in successfully.", new_line=True)
             logger.info(msg="Downloading course information ..")
             self._info = self._real_extract(
-                self._url, skip_hls_stream=self._skip_hls_stream
+                self._url, skip_hls_stream=self._skip_hls_stream, chapter_start=self._chapter_start
             )
             time.sleep(1)
             logger.success(msg="Downloaded course information .. ")
@@ -165,6 +165,20 @@ class InternUdemyLecture(UdemyLectures):
             else:
                 self._duration = "%02d:%02d:%02d" % (hours, mins, secs)
 
+        self._is_encrypted = self._info.get("is_encrypted", False)
+        self._asset_id = self._info.get("asset_id", None)
+
+    def _process_encrypted_sources(self):
+        _sources = self._info.get("video_sources", [])
+        encrypt_streams = (
+            [InternUdemyLectureEncryptStreams(z, self) for z in _sources]
+            if len(_sources) > 0
+            else []
+        )
+        self._encrypt_streams = encrypt_streams
+        # self._streams = sorted(streams, key=lambda k: k.quality)
+        # self._streams = sorted(self._streams, key=lambda k: k.mediatype)
+
     def _process_streams(self):
         streams = (
             [InternUdemyLectureStream(z, self) for z in self._info["sources"]]
@@ -189,6 +203,22 @@ class InternUdemyLecture(UdemyLectures):
             else []
         )
         self._subtitles = subtitles
+
+
+class InternUdemyLectureEncryptStreams(UdemyLectureEncryptStreams):
+    def __init__(self, sources, parent):
+        super(InternUdemyLectureEncryptStreams, self).__init__(parent)
+        self._mediatype = sources.get("type")
+        self._extension = sources.get("extension")
+        self._format_id = sources.get("format_id")
+        self._token = parent._access_token
+        height = sources.get("height", "0")
+        width = sources.get("width", "0")
+        self._resolution = "%sx%s" % (width, height)
+        self._dimension = width, height
+        self._quality = int(height)
+        self._is_hls = "hls" in self._mediatype
+        self._url = sources.get("download_url")
 
 
 class InternUdemyLectureStream(UdemyLectureStream):

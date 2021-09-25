@@ -1,6 +1,8 @@
 {
     "id": "42",
     "title": "S3 Quiz",
+    "validated": true,
+    "wrong_reasons": [],
     "questions":[
         {
             "_class":"assessment",

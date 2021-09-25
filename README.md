@@ -48,6 +48,12 @@ If you'd like to see the full context, then read [issue 627](https://github.com/
 - Ubuntu-LTS (tested with super user)
 
 ## ***Features***
+
+### ***NEW***
+- Quiz download support
+- Interactive template for making quizzes with a offline server
+- Integration of Decrypt module forked from udemy-downloader
+### ***DEFAULT***
 - Added proper session management.
 - Resume capability for a course video.
 - Added proper logging errors and warnings.
@@ -101,6 +107,29 @@ You can download the latest version of udemy-dl by cloning the GitHub repository
 
 ## ***Usage***
 
+### ***NEW: QUIZZES***
+```bash
+python udemy-dl.py COURSE_URL  --quiz-start NUMBER --quiz-end NUMBER
+```
+***Download specific quiz index number***
+```bash
+python udemy-dl.py COURSE_URL --quiz 10
+python udemy-dl.py COURSE_URL -z 10
+```
+### ***NEW: DECRYPT***
+***File where are stored the different keys***
+```bash
+python udemy-dl.py COURSE_URL --keys-decryptors keyjson.json
+```
+***No erase encrypted downloaded videos***
+```bash
+python udemy-dl.py COURSE_URL --keys-decryptors keyjson.json --keep-encrypted 
+```
+***No decrypt videos (Maybe if you dont have the keys, can decrypt after)***
+```bash
+python udemy-dl.py COURSE_URL --keys-decryptors keyjson.json --not-decrypt
+```
+### ***DEFAULT***
 ***Download a course***
 
     python udemy-dl.py COURSE_URL
@@ -159,6 +188,25 @@ You can download the latest version of udemy-dl by cloning the GitHub repository
 
 
 ## **Advanced Usage**
+
+
+## Interactive Quizzes
+You can download the quizzes in a json format, but for usage reason there is an implementation of a interactive json loader simple quiz, that you can use with an offline python server.
+
+For generate quizzes, you can execute the file `generate_quiz_interactive.py`
+```bash
+python generate_quiz_interactive.py
+```
+
+To edit the folder change the path parameter, after, the script automatically read all json files with a correct format
+and generate interactive quizzes inside the main folder of the Course.
+
+> You need to execute the server inside **interactive_quiz** because of Chrome browser CORS policy issue when loaded json files.
+> 1. Execute:
+> `python interactive_quiz/server.py`
+> 2. And go to http://localhost:8080/
+> 3. Enjoit it!
+
 
 <pre><code>
 Author: Nasir khan (<a href="http://r0oth3x49.herokuapp.com/">r0ot h3x49</a>)

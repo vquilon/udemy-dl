@@ -14,9 +14,9 @@ from html.parser import HTMLParser as compat_HTMLParser
 from dotenv import load_dotenv
 from requests.exceptions import ConnectionError as conn_error
 from tqdm import tqdm
-from sanitize import sanitize, slugify, SLUG_OK
-from utils import extract_kid
-from vtt_to_srt import convert
+from udemy.decryptor.sanitize import sanitize, slugify, SLUG_OK
+from udemy.decryptor.utils import extract_kid
+from udemy.decryptor.vtt_to_srt import convert
 
 home_dir = os.getcwd()
 download_dir = os.path.join(os.getcwd(), "out_dir")
@@ -1037,8 +1037,7 @@ def process_lecture(lecture, lecture_path, lecture_file_name, quality, access_to
             print(f"      > Lecture '%s' has DRM, attempting to download" %
                   lecture_title)
             handle_segments(source.get("download_url"),
-                            source.get(
-                                "format_id"), lecture_title, lecture_path, lecture_file_name,
+                            source.get("format_id"), lecture_title, lecture_path, lecture_file_name,
                             concurrent_connections, chapter_dir)
         else:
             print(f"      > Lecture '%s' is missing media links" %

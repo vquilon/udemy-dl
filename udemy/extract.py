@@ -23,7 +23,7 @@ ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 """
-
+import yt_dlp
 
 from udemy.auth import UdemyAuth
 from udemy.utils import (
@@ -579,6 +579,64 @@ class Udemy:
                     )
         return _temp
 
+    def _extract_media_sources(self, sources):
+        _temp = []
+        if sources and isinstance(sources, list):
+            for source in sources:
+                _type = source.get("type")
+                src = source.get("src")
+
+                if _type == "application/dash+xml":
+                    out = self._extract_mpd(src)
+                    if out:
+                        _temp.extend(out)
+        return _temp
+
+    def _extract_mpd(self, url):
+        """extracts mpd streams"""
+        _temp = []
+        try:
+            ytdl = yt_dlp.YoutubeDL({
+                'quiet': True,
+                'no_warnings': True,
+                "allow_unplayable_formats": True
+            })
+            results = ytdl.extract_info(url,
+                                        download=False,
+                                        force_generic_extractor=True)
+            seen = set()
+            formats = results.get("formats")
+
+            format_id = results.get("format_id")
+            best_audio_format_id = format_id.split("+")[1]
+            best_audio = next((x for x in formats
+                               if x.get("format_id") == best_audio_format_id),
+                              None)
+            for f in formats:
+                if "video" in f.get("format_note"):
+                    # is a video stream
+                    format_id = f.get("format_id")
+                    extension = f.get("ext")
+                    height = f.get("height")
+                    width = f.get("width")
+
+                    if height and height not in seen:
+                        seen.add(height)
+                        _temp.append({
+                            "type": "dash",
+                            "height": str(height),
+                            "width": str(width),
+                            "format_id": f"{format_id},{best_audio_format_id}",
+                            "extension": extension,
+                            "download_url": f.get("manifest_url")
+                        })
+                else:
+                    # unknown format type
+                    continue
+        except Exception as error:
+            print(f"Error fetching MPD streams: '{error}'")
+        return _temp
+
     def _extract_subtitles(self, tracks):
         _temp = []
         if tracks and isinstance(tracks, list):
@@ -653,7 +711,9 @@ class Udemy:
                 )
         return _temp
 
-    def _real_extract(self, url="", skip_hls_stream=False):
+    def _real_extract(self, url="", skip_hls_stream=False, chapter_start=None):
+        if chapter_start is None:
+            chapter_start = 0
 
         _udemy = {}
         course_id, course_info = self._extract_course_info(url)
@@ -724,7 +784,7 @@ class Udemy:
                             }
                         )
                         counter += 1
-                elif clazz == "lecture":
+                elif clazz == "lecture" and counter >= chapter_start-1:
                     content_counter += 1
                     lecture_id = entry.get("id")
                     if len(_udemy["chapters"]) == 0:
@@ -809,26 +869,57 @@ class Udemy:
                                     "subtitles": subtitles,
                                     "subtitle_count": subtitle_count,
                                     "sources_count": sources_count,
+                                    "video_sources": [],
+                                    "is_encrypted": False,
+                                    "asset_id": None
                                 }
                             )
                         elif data is None and asset_type == "video":
                             data_lecture = self._extract_lectures(url, portal_name, course_id, lecture_id)
                             # TODO: CUANDO SE TENGAN LAS CLAVES DE CHROME PARA AVERIGUAR CUAL ES EL ID DE
                             #  DESENCRIPTADO DEL VIDEO
-                            lectures.append(
-                                {
+                            # encrypted
+                            asset = data_lecture.get("asset", {})
+                            media_sources = asset.get("media_sources")
+                            if media_sources and isinstance(media_sources, list):
+                                sources = self._extract_media_sources(media_sources)
+                                tracks = asset.get("captions")
+                                # duration = asset.get("time_estimation")
+                                subtitles = self._extract_subtitles(tracks)
+                                sources_count = len(sources)
+                                subtitle_count = len(subtitles)
+                                lectures.append({
                                     "index": content_counter,
                                     "lecture_index": lecture_index,
                                     "lectures_id": lecture_id,
                                     "lecture_title": lecture_title,
-                                    "html_content": asset.get("body"),
-                                    "extension": "html",
+                                    # "duration": duration,
                                     "assets": retVal,
                                     "assets_count": len(retVal),
-                                    "subtitle_count": 0,
-                                    "sources_count": 0,
-                                }
-                            )
+                                    "sources": [],
+                                    "video_sources": sources,
+                                    "subtitles": subtitles,
+                                    "subtitle_count": subtitle_count,
+                                    "sources_count": sources_count,
+                                    "is_encrypted": True,
+                                    "asset_id": asset.get("id")
+                                })
+                            else:
+                                # ALGO PASA CON ESTE LECTURE
+                                lectures.append(
+                                    {
+                                        "index": content_counter,
+                                        "lecture_index": lecture_index,
+                                        "lectures_id": lecture_id,
+                                        "lecture_title": lecture_title,
+                                        "html_content": asset.get("body"),
+                                        "extension": "html",
+                                        "assets": retVal,
+                                        "assets_count": len(retVal),
+                                        "subtitle_count": 0,
+                                        "sources_count": 0,
+                                    }
+                                )
                         else:
                             lectures.append(
                                 {
@@ -847,7 +938,7 @@ class Udemy:
 
                     _udemy["chapters"][counter]["lectures"] = lectures
                     _udemy["chapters"][counter]["lectures_count"] = len(lectures)
-                elif clazz == "quiz":
+                elif clazz == "quiz" and counter >= chapter_start-1:
                     quiz_counter += 1
                     content_counter += 1
                     quiz_id = entry.get("id")

@@ -23,12 +23,14 @@ ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 """
-
+import json
 import os
 import sys
 import argparse
 
 import udemy
+from udemy.auxiliar.generate_quiz_interactive import process_json_quizzes
+from udemy.decryptor.utils import check_for_aria, check_for_ffmpeg, check_for_mp4decrypt
 from udemy.logger import logger
 from udemy.getpass import getpass
 from udemy.vtt2srt import WebVtt2Srt
@@ -47,13 +49,25 @@ class Udemy(WebVtt2Srt, ProgressBar):
     """Udemy is class which implements downloading/listing and all"""
 
     def __init__(
-        self, url_or_courses, username="", password="", cookies="", cache_session=False
+        self, url_or_courses, username="", password="", cookies="", cache_session=False, keys_decryptors="keyfile.json"
     ):
         self.username = username
         self.password = password
         self.cookies = cookies
         self._cache_session = cache_session
         self.url_or_courses = url_or_courses
+
+        # Get the keys
+        keyfile_path = os.path.join(os.getcwd(), keys_decryptors)
+        keyfile = {}
+        if keys_decryptors:
+            with open(keyfile_path, 'r') as keyfile:
+                keyfile = keyfile.read()
+                if keyfile:
+                    keyfile = json.loads(keyfile)
+
+        self.keys_decryptors = keyfile
+
         super(Udemy, self).__init__()
 
     def download_assets(self, assets, filepath):
@@ -80,32 +94,50 @@ class Udemy(WebVtt2Srt, ProgressBar):
                     logger.error(msg="User Interrupted..", new_line=True)
                     sys.exit(0)
 
-    def download_lecture(self, lecture, filepath, current, total, quality):
+    def download_lecture(self, stream, filepath, current, total, keep_encrypted, do_decrypt):
         """This function will simply download the lectures.."""
-        if quality and lecture:
-            lecture = lecture.get_quality(quality)
-        if lecture:
-            title = lecture.title
+        if stream:
+            title = stream.title
             logger.info(
                 msg=f"Lecture(s) : ({current} of {total})", new_line=True, before=True
             )
             logger.info(msg=f"Downloading ({title})", new_line=True)
-            try:
-                retval = lecture.download(
-                    filepath=filepath,
-                    quiet=True,
-                    callback=self.show_progress,
-                )
-                msg = retval.get("msg")
-                if msg == "already downloaded":
-                    logger.already_downloaded(msg=f"Lecture : '{title}'")
-                elif msg == "download":
-                    logger.info(msg=f"Downloaded  ({title})", new_line=True)
+
+            if stream.parent.is_encrypted:
+                if len(stream.parent.encrypt_streams) > 0:
+                    logger.info(msg=f"      > Lecture '{stream.title}' has DRM, attempting to download", new_line=True)
+                    stream.handle_segments(
+                        keep_encrypted, do_decrypt, self.keys_decryptors,
+                        stream.url, stream.format_id, stream.title, filepath,
+                        concurrent_connections=10,
+                    )
                 else:
-                    logger.download_skipped(msg=f"Lecture : '{title}' ", reason=msg)
-            except KeyboardInterrupt:
-                logger.error(msg="User Interrupted..", new_line=True)
-                sys.exit(0)
+                    logger.info(
+                        msg=f"      > Lecture '{stream.title}' is missing media links",
+                        new_line=True
+                    )
+                    logger.info(
+                        msg=len(stream._parents.encrypt_streams),
+                        new_line=True
+                    )
+
+            else:
+                try:
+                    retval = stream.download(
+                        filepath=filepath,
+                        quiet=True,
+                        callback=self.show_progress,
+                    )
+                    msg = retval.get("msg")
+                    if msg == "already downloaded":
+                        logger.already_downloaded(msg=f"Lecture : '{title}'")
+                    elif msg == "download":
+                        logger.info(msg=f"Downloaded  ({title})", new_line=True)
+                    else:
+                        logger.download_skipped(msg=f"Lecture : '{title}' ", reason=msg)
+                except KeyboardInterrupt:
+                    logger.error(msg="User Interrupted..", new_line=True)
+                    sys.exit(0)
 
     def download_subtitles(self, subtitles, filepath, language="en", keep_vtt=False):
         """This function will simply download the subtitles.."""
@@ -316,12 +348,16 @@ class Udemy(WebVtt2Srt, ProgressBar):
         quiz_end=None,
         keep_vtt=False,
         skip_hls_stream=False,
+        keep_encrypted=False,
+        do_decrypt=True
     ):
         """This function will download the course contents .."""
         if not self.cookies:
             logger.info(msg="Trying to login as", status=self.username)
         if self.cookies:
             logger.info(msg="Trying to login using session cookie", new_line=True)
+
+        courses_paths = []
         for url in self.url_or_courses:
             course = udemy.course(
                 url=url,
@@ -330,12 +366,19 @@ class Udemy(WebVtt2Srt, ProgressBar):
                 cookies=self.cookies,
                 skip_hls_stream=skip_hls_stream,
                 cache_session=self._cache_session,
+                chapter_start=chapter_start
             )
             course_name = course.title
             if path:
                 if "~" in path:
                     path = os.path.expanduser(path)
             course_path = os.path.join(path, course_name)
+
+            courses_paths.append({
+                "title": course_name,
+                "path": course_path
+            })
+
             chapters = course.get_chapters(
                 chapter_number=chapter_number,
                 chapter_start=chapter_start,
@@ -400,7 +443,6 @@ class Udemy(WebVtt2Srt, ProgressBar):
                 for lecture in lectures:
                     lecture_assets = lecture.assets
                     lecture_subtitles = lecture.subtitles
-                    lecture_best = lecture.getbest()
                     if dl_lecture:
                         lecture_index = lecture_index + 1
                         if lecture.html:
@@ -409,12 +451,17 @@ class Udemy(WebVtt2Srt, ProgressBar):
                             if msg not in ["download", "already downloaded"]:
                                 msg = f"Lecture: '{lecture.title}.{lecture.extension}' failed to dump, reason: {msg}"
                                 logger.warning(msg=msg, silent=True)
+
+                        stream = lecture.getbest()
+                        if quality and lecture:
+                            stream = lecture.get_quality(quality)
                         self.download_lecture(
-                            lecture_best,
+                            stream,
                             filepath,
                             lecture_index,
                             lectures_count,
-                            quality,
+                            keep_encrypted,
+                            do_decrypt
                         )
                     if dl_assets:
                         self.download_assets(lecture_assets, filepath)
@@ -452,6 +499,7 @@ class Udemy(WebVtt2Srt, ProgressBar):
 
             print("")
 
+        return courses_paths
 
 def main():
     """main function"""
@@ -533,7 +581,7 @@ def main():
         metavar="",
     )
     advance.add_argument(
-        "-q",
+        "-z",
         "--quiz",
         dest="quiz",
         type=int,
@@ -590,6 +638,28 @@ def main():
         type=int,
         help="Download till specific position within chapter(s).",
         metavar="",
+    )
+
+    decrypt = parser.add_argument_group("Decrypt")
+    decrypt.add_argument(
+        "-d",
+        "--keys-decryptors",
+        dest="keys_decryptors",
+        type=str,
+        help="Keys to decrypt videos.",
+        metavar="",
+    )
+    decrypt.add_argument(
+        "--not-decrypt",
+        dest="not_decrypt",
+        action="store_true",
+        help="Decrypt Videos if is set.",
+    )
+    decrypt.add_argument(
+        "--keep-encrypted",
+        dest="keep_encrypted",
+        action="store_true",
+        help="Keep Encrypt video(s).",
     )
 
     other = parser.add_argument_group("Others")
@@ -686,12 +756,38 @@ def main():
             msg=f"You should either provide fresh access token or username/password for udemy.."
         )
         sys.exit(0)
+
+    aria_ret_val = check_for_aria()
+    if not aria_ret_val:
+        logger.error(
+            msg="> Aria2c is missing from your system or path!",
+            new_line=True
+        )
+        sys.exit(1)
+
+    ffmpeg_ret_val = check_for_ffmpeg()
+    if not ffmpeg_ret_val:
+        logger.error(
+            msg="> FFMPEG is missing from your system or path!",
+            new_line=True
+        )
+        sys.exit(1)
+
+    mp4decrypt_ret_val = check_for_mp4decrypt()
+    if not mp4decrypt_ret_val:
+        logger.error(
+            msg="> MP4Decrypt is missing from your system or path! (This is part of Bento4 tools)",
+            new_line=True
+        )
+        sys.exit(1)
+
     udemy_obj = Udemy(
         url_or_courses=url_or_courses,
         username=args.username,
         password=args.password,
         cookies=args.cookies,
         cache_session=args.cache_session,
+        keys_decryptors=args.keys_decryptors or "keyfile.json"
     )
     # setting the caching default so that we can avoid future login attemps.
     if args.cache_session:
@@ -726,7 +822,7 @@ def main():
             logger.warning(
                 msg="You cannot use --skip-hls and -q/--quality options togather, considering --skip-hls only.."
             )
-        udemy_obj.course_download(
+        courses_info_paths = udemy_obj.course_download(
             path=args.output,
             quality=args.quality,
             language=args.language,
@@ -745,6 +841,8 @@ def main():
             quiz_end=args.quiz_end,
             keep_vtt=args.keep_vtt,
             skip_hls_stream=args.skip_hls_stream,
+            keep_encrypted=args.keep_encrypted,
+            do_decrypt=not args.not_decrypt
         )
     if args.info:
         udemy_obj.course_listdown(
@@ -758,6 +856,18 @@ def main():
             quiz_start=args.quiz_start,
             quiz_end=args.quiz_end,
             skip_hls_stream=args.skip_hls_stream,
+        )
+
+    # Generates quizzes
+    generate_interactives_quizzes(courses_info_paths)
+
+
+def generate_interactives_quizzes(courses_info_paths):
+    for course_info in courses_info_paths:
+        process_json_quizzes(
+            course_info["title"],
+            r"quiz_template",
+            course_info["path"]
         )
 
 

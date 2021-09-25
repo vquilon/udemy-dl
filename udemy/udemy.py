@@ -37,6 +37,7 @@ def course(
     skip_hls_stream=False,
     cache_session=False,
     callback=None,
+    chapter_start=0
 ):
     """Returns udemy course instance.
 
@@ -55,6 +56,7 @@ def course(
         skip_hls_stream,
         cache_session,
         callback,
+        chapter_start
     )
 
 
