@@ -101,3 +101,5 @@ pip-selfcheck.json
 # IDE
 .vscode/
 .idea/
+/.idea/
+/.github/
