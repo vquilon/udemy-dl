@@ -6,6 +6,10 @@ import sys
 from udemy.decryptor.utils import extract_kid, decrypt, mux_process
 
 
+def clean_title(title):
+    return re.sub(r"[^\w-]", '_', title)
+
+
 def walk_recursively(path, pattern_file=""):
     all_dirs_path = []
     all_files_path = []

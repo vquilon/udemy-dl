@@ -4,13 +4,14 @@ const RESULTS = "results";
 const REVISION = "revision";
 
 const ANSWER_TEMPLATE = `<label><input type="radio" name="answer" value="{ANS_OPT}" group="answers">{ANS_TEXT}</label>`;
-
 const ANSWERED_MSG = {
   "correct": "You answered {} questions correctly",
   "wrong": "You answered {} questions wrong",
   "skipped": "You skipped {} questions"
 }
 
+const SECTION_TEMPLATE=`<p class="sect-name"></p>`;
+const SECTION_PROGRESS_TEMPLATE = `<div class="progress sect-correct"><label class="percent"></label></div><div class="progress sect-wrong"><label class="percent"></label></div><div class="progress sect-skipped"><label class="percent"></label></div>`;
 const FEEDBACK_STYLES = {
   "correct": {
     "backgroundColor": "#46a049",
@@ -66,6 +67,7 @@ template_results.innerHTML = `
   <div class="meta">
     <h1 class="name"></h1>
     <p class="scoreboard"></p>
+    <div class="overall-sections"></div>
   </div>
   <div class="main-container">
     <div class="skipped"></div>
@@ -191,10 +193,23 @@ class JSONQuiz extends HTMLElement {
       "wrong": [],
       "skipped": []
     }
+
+    this.question_sections = {
+      "Without Section": {
+        correct_answers: 0,
+        wrong_answers: 0,
+        skipped_questions: 0
+      }
+    };
+    // section_name: {
+    //  correct_answers: 3,
+    //  wrong_answers: 4
+    //  skipped_questions: 10
+    // }
+
     this.actual_question = 0;
     let data_questions = this.data_quiz["questions"];
     data_questions = this.sortQuestions(data_questions);
-
     this.total_q = data_questions.length;
 
     // Generating html for answers
@@ -206,56 +221,67 @@ class JSONQuiz extends HTMLElement {
 
     // Button Listeners
     const verifyAnswer = (e) => {
-        let $_quiz = this.shadowRoot.querySelector(`#quiz-${this.data_quiz.id}.quiz.main`);
-        let data_question = data_questions[this.actual_question];
-        let ques_id = data_questions[this.actual_question].id;
+      let $_quiz = this.shadowRoot.querySelector(`#quiz-${this.data_quiz.id}.quiz.main`);
+      let data_question = data_questions[this.actual_question];
+      let ques_id = data_questions[this.actual_question].id;
 
-        // Posibilidad de multiples opciones
-        const answer_elements = Array.from($_quiz.querySelectorAll("input[name=answer]:checked")).map((elem) => elem.value);
-        if ( answer_elements.length !== 0 ) {
-              let feedbacks = answer_elements.map((elem) => {
-                return {
-                  "text": data_question.feedbacks[elem],
-                  "type": data_question.correct_response.includes(elem) ? "correct":"wrong"
-                }
-              });
-              let are_correct = answer_elements.every(
-                ans_val => data_question.correct_response.includes(ans_val)
-              );
-              if ( are_correct ) {
-                if ( !this.isAnswered(ques_id) ) {
-                  this.answered_count.correct++;
-                  this.answered.correct[ques_id] = {
-                    "options": answer_elements,
-                    "question_number": this.actual_question,
-                    "question": data_question
-                  }
-                }
-
-                this.createFeedback(feedbacks);
-              }
-              else {
-                if ( !this.isAnswered(ques_id) ) {
-                  this.answered_count.wrong++;
-                  this.answered.wrong[ques_id] = {
-                    "options": answer_elements,
-                    "question_number": this.actual_question,
-                    "question": data_questions[this.actual_question]
-                  }
-                }
-
-                this.createFeedback(feedbacks);
-              }
-
-
-              // Bloqueamos la pregunta
-              // $_quiz.querySelectorAll(
-              //   `.answers input:not(:checked)`
-              // ).forEach((elem) => elem.disabled=true);
-              $_quiz.querySelectorAll(
-                `.answers input:checked`
-              ).forEach((elem) => elem.disabled=true);
+      // Posibilidad de multiples opciones
+      const answer_elements = Array.from($_quiz.querySelectorAll("input[name=answer]:checked")).map((elem) => elem.value);
+      if ( answer_elements.length !== 0 ) {
+        let feedbacks = answer_elements.map((elem) => {
+          return {
+            "text": data_question.feedbacks[elem],
+            "type": data_question.correct_response.includes(elem) ? "correct":"wrong"
+          }
+        });
+        let are_correct = answer_elements.every(
+          ans_val => data_question.correct_response.includes(ans_val)
+        );
+        if ( are_correct ) {
+          if ( !this.isAnswered(ques_id) ) {
+            this.answered_count.correct++;
+            this.answered.correct[ques_id] = {
+              "options": answer_elements,
+              "question_number": this.actual_question,
+              "question": data_question
             }
+            if ( data_question.section !== "" || data_question.section !== undefined ) {
+              this.question_sections[data_question.section].correct_answers++;
+            }
+            else {
+              this.question_sections["Without Section"].correct_answers++;
+            }
+          }
+
+          this.createFeedback(feedbacks);
+        }
+        else {
+          if ( !this.isAnswered(ques_id) ) {
+            this.answered_count.wrong++;
+            this.answered.wrong[ques_id] = {
+              "options": answer_elements,
+              "question_number": this.actual_question,
+              "question": data_questions[this.actual_question]
+            }
+            if ( data_question.section !== "" || data_question.section !== undefined ) {
+              this.question_sections[data_question.section].wrong_answers++;
+            }
+            else {
+              this.question_sections["Without Section"].wrong_answers++;
+            }
+          }
+
+          this.createFeedback(feedbacks);
+        }
+
+        // Bloqueamos la pregunta
+        // $_quiz.querySelectorAll(
+        //   `.answers input:not(:checked)`
+        // ).forEach((elem) => elem.disabled=true);
+        $_quiz.querySelectorAll(
+          `.answers input:checked`
+        ).forEach((elem) => elem.disabled=true);
+      }
 
     }
     $quiz.querySelector("button.verify").addEventListener("click", verifyAnswer);
@@ -269,6 +295,12 @@ class JSONQuiz extends HTMLElement {
           "options": [],
           "question_number": this.actual_question,
           "question": data_questions[this.actual_question]
+        }
+        if ( data_questions[this.actual_question].section !== "" || data_questions[this.actual_question].section !== undefined ) {
+          this.question_sections[data_questions[this.actual_question].section].skipped_questions++
+        }
+        else {
+          this.question_sections["Without Section"].skipped_questions++;
         }
       }
 
@@ -311,6 +343,17 @@ class JSONQuiz extends HTMLElement {
 
     const answers_html = this.createAnswers(data_question);
     $parentNode.querySelector(".options").innerHTML = answers_html;
+
+    if ( this.question_sections[data_question.section] === undefined &&
+      data_question.section !== "" &&
+      data_question.section !== undefined
+    ) {
+      this.question_sections[data_question.section] = {
+        correct_answers: 0,
+        wrong_answers: 0,
+        skipped_questions: 0
+      }
+    }
   }
 
   createQuizResults(actualMainChildClass) {
@@ -320,6 +363,46 @@ class JSONQuiz extends HTMLElement {
     $results.querySelector(".scoreboard").innerText = `You got ${this.answered_count.correct} out of ${this.total_q}.`;
     if ( this.answered_count.skipped > 0 ){
       $results.querySelector(".scoreboard").innerText += ` You have skipped ${this.answered_count.skipped} questions.`;
+    }
+
+    let $sections = $results.querySelector(".overall-sections");
+
+    for (let sect in this.question_sections) {
+      let total_questions = this.question_sections[sect].correct_answers + this.question_sections[sect].wrong_answers + this.question_sections[sect].skipped_questions;
+
+      if ( total_questions > 0 ) {
+        let correct_percent = this.question_sections[sect].correct_answers/total_questions * 100;
+        let wrong_percent = this.question_sections[sect].wrong_answers/total_questions * 100;
+        let skipped_percent = this.question_sections[sect].skipped_questions/total_questions * 100;
+        let $sect = document.createElement("div");
+        $sect.classList.add("section");
+        $sect.innerHTML = SECTION_TEMPLATE;
+        $sect.innerHTML += SECTION_PROGRESS_TEMPLATE;
+
+        if ( correct_percent > 0 ) {
+          $sect.querySelector(".progress.sect-correct").style.width = `calc(${correct_percent}% - 2px)`;
+          $sect.querySelector(".progress.sect-correct label").innerText = `${parseInt(correct_percent*1000)/1000} %`;
+        } else{
+          $sect.querySelector(".progress.sect-correct").remove();
+        }
+
+        if ( wrong_percent > 0 ) {
+          $sect.querySelector(".progress.sect-wrong").style.width = `calc(${wrong_percent}% - 2px)`;
+          $sect.querySelector(".progress.sect-wrong label").innerText = `${parseInt(wrong_percent*1000)/1000} %`;
+        } else{
+          $sect.querySelector(".progress.sect-wrong").remove();
+        }
+
+        if ( skipped_percent > 0 ) {
+          $sect.querySelector(".progress.sect-skipped").style.width = `calc(${skipped_percent}% - 2px)`;
+          $sect.querySelector(".progress.sect-skipped label").innerText = `${parseInt(skipped_percent*1000)/1000} %`;
+        } else{
+         $sect.querySelector(".progress.sect-skipped").remove();
+       }
+
+        $sect.querySelector(".sect-name").innerText = sect;
+        $sections.appendChild($sect);
+      }
     }
 
     for (const q_outcome in this.answered) {

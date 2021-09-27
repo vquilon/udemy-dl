@@ -46,7 +46,7 @@ h1 {
   font-weight: bold;
 }
 
-label {
+.answers label, label.question-revision {
   margin: 10px 0;
   display: block;
   cursor: pointer;
@@ -74,7 +74,7 @@ label.wrong:hover {
   background-color: #ffc3c3;
 }
 
-label:hover {
+.answers label:hover, label.question-revision:hover {
   background-color: lightgray;
 }
 
@@ -130,4 +130,59 @@ label.question-revision:hover {
 
 .scoreboard {
   font-size: 18px;
+}
+
+.overall-sections {
+  margin: 20px 0px;
+}
+
+.overall-sections .sect-name {
+  font-size: 20px;
+  margin: 0;
+}
+
+.section .progress {
+  width: 0%;
+  height: 30px;
+  display: inline-block;
+  overflow: visible;
+  border: solid 1px transparent;
+}
+
+.section .progress.sect-correct {
+  background-color: #b3ffb3
+}
+
+.section .progress.sect-wrong {
+  background-color: #ffb3b3;
+}
+
+.section .progress.sect-skipped {
+  background-color: #b3b3b3
+}
+
+.section .progress .percent {
+    font-size: 20px;
+    line-height: 30px;
+    visibility: hidden;
+    margin-left: 10px;
+    position: relative;
+    font-weight: bold;
+    white-space: nowrap;
+}
+.section .progress:hover {
+  margin:0px;
+}
+.section .progress.sect-skipped:hover {
+  border: solid 1px black;
+}
+.section .progress.sect-wrong:hover {
+  border: solid 1px red;
+}
+.section .progress.sect-correct:hover {
+  border: solid 1px green;
+}
+
+.section .progress:hover .percent {
+  visibility: visible;
 }

@@ -247,9 +247,9 @@ def process_json_quizzes(course_name, template_quiz_path, path: str):
 
 if __name__ == '__main__':
     process_json_quizzes(
-        "[NEW] Ultimate AWS Certified Cloud Practitioner - 2021",
+        "practice-exams-aws-certified-cloud-practitioner",
         r"..\..\quiz_template",
-        r"E:\Cursos\Udemy\aws-certified-cloud-practitioner-new"
+        r"E:\Cursos\Udemy\practice-exams-aws-certified-cloud-practitioner"
     )
 
 

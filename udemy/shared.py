@@ -25,6 +25,7 @@ THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 import json
 import subprocess
 
+from udemy.auxiliar.decrypt_all_sources import clean_title
 from udemy.compat import (
     re,
     os,

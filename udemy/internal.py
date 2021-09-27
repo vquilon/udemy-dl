@@ -25,6 +25,7 @@ THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 from typing import List
 
+from udemy.auxiliar.decrypt_all_sources import clean_title
 from udemy.compat import time, sys
 from udemy.extract import Udemy
 from udemy.logger import logger
@@ -117,7 +118,8 @@ class InternUdemyChapter(UdemyChapters):
         super(InternUdemyChapter, self).__init__()
 
         self._chapter_id = chapter["chapter_id"]
-        self._chapter_title = chapter["chapter_title"]
+        self._chapter_title = clean_title(chapter["chapter_title"])
+
         self._chapter_index = chapter["chapter_index"]
         self._lectures_count = chapter.get("lectures_count", 0)
         self._question_count = chapter.get("quizzes_count", 0)
@@ -147,7 +149,7 @@ class InternUdemyLecture(UdemyLectures):
         self._info = lectures
 
         self._lecture_id = self._info["lectures_id"]
-        self._lecture_title = self._info["lecture_title"]
+        self._lecture_title = clean_title(self._info["lecture_title"])
         self._lecture_index = self._info["lecture_index"]
 
         self._subtitles_count = self._info.get("subtitle_count", 0)
@@ -243,7 +245,7 @@ class InternUdemyLectureAssets(UdemyLectureAssets):
 
         self._mediatype = assets.get("type")
         self._extension = assets.get("extension")
-        title = assets.get("title", "")
+        title = clean_title(assets.get("title", ""))
         if not title:
             title = assets.get("filename")
         if title and title.endswith(self._extension):
@@ -272,7 +274,7 @@ class InternUdemyQuiz(UdemyQuizzes):
         self._info = quizzes
 
         self._quiz_id = self._info["quiz_id"]
-        self._quiz_title = self._info["quiz_title"]
+        self._quiz_title = clean_title(self._info["quiz_title"])
         self._question_count = self._info.get("quizzes_count", 0)
 
     def _process_questions(self):
