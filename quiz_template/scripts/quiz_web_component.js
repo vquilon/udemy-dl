@@ -245,7 +245,7 @@ class JSONQuiz extends HTMLElement {
               "question_number": this.actual_question,
               "question": data_question
             }
-            if ( data_question.section !== "" || data_question.section !== undefined ) {
+            if ( data_question.section !== "" && data_question.section !== undefined ) {
               this.question_sections[data_question.section].correct_answers++;
             }
             else {
@@ -263,8 +263,8 @@ class JSONQuiz extends HTMLElement {
               "question_number": this.actual_question,
               "question": data_questions[this.actual_question]
             }
-            if ( data_question.section !== "" || data_question.section !== undefined ) {
-              this.question_sections[data_question.section].wrong_answers++;
+            if ( data_questions[this.actual_question].section !== "" && data_questions[this.actual_question].section !== undefined ) {
+              this.question_sections[data_questions[this.actual_question].section].wrong_answers++;
             }
             else {
               this.question_sections["Without Section"].wrong_answers++;
@@ -296,7 +296,7 @@ class JSONQuiz extends HTMLElement {
           "question_number": this.actual_question,
           "question": data_questions[this.actual_question]
         }
-        if ( data_questions[this.actual_question].section !== "" || data_questions[this.actual_question].section !== undefined ) {
+        if ( data_questions[this.actual_question].section !== "" && data_questions[this.actual_question].section !== undefined ) {
           this.question_sections[data_questions[this.actual_question].section].skipped_questions++
         }
         else {
