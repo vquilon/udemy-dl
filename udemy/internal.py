@@ -300,6 +300,7 @@ class InternUdemyQuizQuestion(UdemyQuizQuestion):
         prompt = question.get("prompt")
         self._feedbacks = {self.LETTERS[i]: prompt.get("feedbacks", [])[i] for i in range(len(prompt.get("feedbacks", [])))}
         self._answers = {self.LETTERS[i]: prompt.get("answers", [])[i] for i in range(len(prompt.get("answers", [])))}
+        self._explanation_html = prompt.get("explanation", "")
 
         self._correct_response = question.get("correct_response")
         self._section = question.get("section")

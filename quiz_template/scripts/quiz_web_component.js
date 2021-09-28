@@ -88,6 +88,7 @@ template_revision.innerHTML = `
     <p class="question"></p>
     <div class="feedbacks"></div>
     <div class="options answers"></div>
+    <div class="explanation"></div>
   </div>
   <button class="back submit">Back to results</button>
 </div>
@@ -139,15 +140,29 @@ class JSONQuiz extends HTMLElement {
     this.addNode(nodeNew);
   }
 
-  createAnswers(data_question, answ_sol=false) {
+  createAnswers(data_question, answ_sol=[]) {
     var answers_html = ``;
       for (const ans_letter in data_question.answers) {
         let ans_text = data_question.answers[ans_letter];
         let ans_html = ANSWER_TEMPLATE.replace(/{ANS_OPT}/, ans_letter);
+
+        if ( data_question.assessment_type === "multi-select" ) {
+          ans_html = ans_html.replace(`type="radio"`, `type="checkbox"`);
+        }
+
         ans_html = ans_html.replace(/{ANS_TEXT}/, ans_text);
-        if ( answ_sol ) {
-          let ans_outcome = data_question.correct_response.includes(ans_letter) ? "correct" : "wrong";
-          ans_html = ans_html.replace(/<label>/, `<label class="${ans_outcome}">`);
+        if ( answ_sol.length !== 0 ) {
+          let ans_outcome = "";
+          if ( answ_sol.includes(ans_letter) ) {
+            ans_outcome = data_question.correct_response.includes(ans_letter) ? "correct" : "wrong";
+          }
+          if ( data_question.correct_response.includes(ans_letter) ) {
+            ans_outcome = "correct";
+          }
+          if ( ans_outcome !== "" ) {
+            ans_html = ans_html.replace(/<label>/, `<label class="${ans_outcome}">`);
+          }
+
         }
         answers_html += ans_html;
       }
@@ -237,6 +252,18 @@ class JSONQuiz extends HTMLElement {
         let are_correct = answer_elements.every(
           ans_val => data_question.correct_response.includes(ans_val)
         );
+        let correct_ans = answer_elements.filter(elem => data_question.correct_response.includes(elem));
+        let wrong_ans = answer_elements.filter(elem => !data_question.correct_response.includes(elem));
+
+        if ( data_question.section !== "" && data_question.section !== undefined ) {
+          this.question_sections[data_question.section].correct_answers += correct_ans.length;
+          this.question_sections[data_questions[this.actual_question].section].wrong_answers += wrong_ans.length;
+        }
+        else {
+          this.question_sections["Without Section"].correct_answers += correct_ans.length;
+          this.question_sections["Without Section"].wrong_answers += wrong_ans.length;
+        }
+
         if ( are_correct ) {
           if ( !this.isAnswered(ques_id) ) {
             this.answered_count.correct++;
@@ -245,14 +272,7 @@ class JSONQuiz extends HTMLElement {
               "question_number": this.actual_question,
               "question": data_question
             }
-            if ( data_question.section !== "" && data_question.section !== undefined ) {
-              this.question_sections[data_question.section].correct_answers++;
-            }
-            else {
-              this.question_sections["Without Section"].correct_answers++;
-            }
           }
-
           this.createFeedback(feedbacks);
         }
         else {
@@ -263,12 +283,7 @@ class JSONQuiz extends HTMLElement {
               "question_number": this.actual_question,
               "question": data_questions[this.actual_question]
             }
-            if ( data_questions[this.actual_question].section !== "" && data_questions[this.actual_question].section !== undefined ) {
-              this.question_sections[data_questions[this.actual_question].section].wrong_answers++;
-            }
-            else {
-              this.question_sections["Without Section"].wrong_answers++;
-            }
+
           }
 
           this.createFeedback(feedbacks);
@@ -454,7 +469,7 @@ class JSONQuiz extends HTMLElement {
 
     $revision.querySelector(".question").innerText =`Q${question_number+1}: ` + data_question.question;
 
-    const answers_html = this.createAnswers(data_question, true);
+    const answers_html = this.createAnswers(data_question, answer_options);
     $revision.querySelector(".options").innerHTML = answers_html;
     if ( !ans_skipped ) {
       orig_answer_options.forEach((ans_elem) => {
@@ -465,6 +480,13 @@ class JSONQuiz extends HTMLElement {
     $revision.querySelectorAll(
       `.answers input:not(:checked)`
     ).forEach((elem) => elem.disabled=true);
+
+    if ( data_question.explanationHTML ) {
+      $revision.querySelector(".explanation").innerHTML = data_question.explanationHTML;
+    }
+    else {
+      $revision.querySelector(".exlpanation").removeChild();
+    }
 
     $revision.querySelector("button.back").addEventListener("click", (e) => {
       this.createQuizResults(REVISION);

@@ -1084,6 +1084,7 @@ class UdemyQuizQuestion(object):
         self._correct_response = []
         self._section = None
         self._question_plain = None
+        self._explanation_html = None
         self._related_lectures = []
 
     @property
@@ -1099,6 +1100,10 @@ class UdemyQuizQuestion(object):
         return self._question_plain
 
     @property
+    def explanation_html(self):
+        return self._explanation_html
+
+    @property
     def related_lectures(self):
         return self._related_lectures
 
@@ -1111,6 +1116,7 @@ class UdemyQuizQuestion(object):
             "id": self._id,
             "assessment_type": self._assessment_type,
             "feedbacks": self._feedbacks,
+            "explanationHTML": self.explanation_html,
             "question": self._question_plain,
             "answers": self._answers,
             "correct_response": self._correct_response,

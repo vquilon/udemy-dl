@@ -53,6 +53,7 @@ COURSE_URL = "https://{portal_name}.udemy.com/api-2.0/courses/{course_id}/cached
 # &fields[quiz]=title,object_index,is_published,sort_order,type&fields[practice]=title,object_index,is_published,sort_order&
 SUBSCRIBED_COURSES = "https://www.udemy.com/api-2.0/users/me/subscribed-courses/?ordering=-last_accessed&fields[course]=id,title,url&page=1&page_size=12"
 QUIZ_URL = "https://{portal_name}.udemy.com/api-2.0/quizzes/{quiz_id}/assessments/?version={last_version}&page_size=250&fields[assessment]=id,assessment_type,prompt,correct_response,section,question_plain,related_lectures"
+REFERER_QUIZ_URL = "https://{portal_name}.udemy.com/course/{course_name}/learn/quiz/{quiz_id}#content"
 LECTURE_URL = "https://{portal_name}.udemy.com/api-2.0/users/me/subscribed-courses/{course_id}/lectures/{lecture_id}/?fields[lecture]=asset,description,download_url,is_free,last_watched_second,version&fields[asset]=asset_type,length,media_license_token,course_is_drmed,media_sources,captions,thumbnail_sprite,slides,slide_urls,download_urls" # &q=0.6148300542269443"
 
 WIDEVINE_KEY_ENCRYPT="https://indra.udemy.com/api-2.0/media-license-server/validate-auth-token?drm_type=widevine&auth_token={media_license_token}"

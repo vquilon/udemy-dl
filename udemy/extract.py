@@ -44,7 +44,7 @@ from udemy.compat import (
     MY_COURSES_URL,
     COURSE_SEARCH,
     COLLECTION_URL,
-    SUBSCRIBED_COURSES, QUIZ_URL, LECTURE_URL,
+    SUBSCRIBED_COURSES, QUIZ_URL, LECTURE_URL, REFERER_QUIZ_URL,
 )
 from udemy.sanitize import slugify, sanitize, SLUG_OK
 from udemy.logger import logger
@@ -155,9 +155,10 @@ class Udemy:
         return results
 
     # PLUGIN: QUIZZES
-    def _extract_quizzes(self, url, portal_name, quiz_id, last_version):
+    def _extract_quizzes(self, url, portal_name, quiz_id, last_version, course_name):
         # https://indra.udemy.com/api-2.0/quizzes/4900310/assessments/?version=1&page_size=250&fields[assessment]=id,assessment_type,prompt,correct_response,section,question_plain,related_lectures
-        self._session._headers.update({"Referer": url})
+        referer = REFERER_QUIZ_URL.format(portal_name=portal_name, quiz_id=quiz_id, course_name=course_name)
+        self._session._headers.update({"Referer": referer})
         url = QUIZ_URL.format(portal_name=portal_name, quiz_id=quiz_id, last_version=last_version)
         try:
             resp = self._session._get(url)
@@ -968,7 +969,7 @@ class Udemy:
 
                         lecture_title = "{0:03d} ".format(content_counter) + f"Quiz {quiz_counter} " + self._clean(entry.get("title"))
 
-                        quiz_res = self._extract_quizzes(url, portal_name, quiz_id, last_version_quiz)
+                        quiz_res = self._extract_quizzes(url, portal_name, quiz_id, last_version_quiz, course_title)
                         quizzes.append(
                             {
                                 "index": content_counter,

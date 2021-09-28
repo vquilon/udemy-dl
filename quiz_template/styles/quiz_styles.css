@@ -186,3 +186,7 @@ label.question-revision:hover {
 .section .progress:hover .percent {
   visibility: visible;
 }
+
+.explanation img {
+  width: 100%
+}
