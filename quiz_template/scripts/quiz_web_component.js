@@ -485,7 +485,7 @@ class JSONQuiz extends HTMLElement {
       $revision.querySelector(".explanation").innerHTML = data_question.explanationHTML;
     }
     else {
-      $revision.querySelector(".exlpanation").removeChild();
+      $revision.querySelector(".explanation").removeChild();
     }
 
     $revision.querySelector("button.back").addEventListener("click", (e) => {
